@@ -3,6 +3,13 @@ name: Build on All Branches
 on:
   pull_request:
     types: [opened, synchronize]  # Trigger when PR is opened or when new commits are pushed to PR
+  push:
+    branches:
+      - '**'  # Trigger on push to any branch
+
+concurrency:
+  group: build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -17,9 +24,37 @@ env:
   # Note: Use repository variables (not secrets) for job-level if conditions
 
 jobs:
+  check-pr:
+    runs-on: ubuntu-latest
+    outputs:
+      has-open-pr: ${{ steps.check.outputs.has-open-pr || 'false' }}
+    steps:
+      - name: Check for open PR
+        id: check
+        if: github.event_name == 'push'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const ref = context.payload.ref.replace('refs/heads/', '');
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${ref}`,
+              state: 'open'
+            });
+            core.setOutput('has-open-pr', prs.length > 0 ? 'true' : 'false');
+      - name: Skip check for pull_request events
+        if: github.event_name == 'pull_request'
+        run: echo "Skipping PR check for pull_request events"
+
   build-windows:
     runs-on: windows-latest
-    if: vars.BUILD_WINDOWS == 'true' && github.event.pull_request.draft == false
+    needs: [check-pr]
+    if: |
+      vars.BUILD_WINDOWS == 'true' && (
+        (github.event_name == 'pull_request' && github.event.pull_request.draft == false) ||
+        (github.event_name == 'push' && needs.check-pr.outputs.has-open-pr == 'false')
+      )
     steps:
       - uses: actions/checkout@v4
 
@@ -55,14 +90,19 @@ jobs:
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-build-pr${{ github.event.pull_request.number }}-${{ github.sha }}
+          name: windows-build-${{ github.event.pull_request.number || github.ref_name }}-${{ github.sha }}
           path: |
             out/make/**
             SSW.YakShaver-windows-*
 
   build-macos:
     runs-on: macos-latest
-    if: vars.BUILD_MACOS == 'true' && github.event.pull_request.draft == false
+    needs: [check-pr]
+    if: |
+      vars.BUILD_MACOS == 'true' && (
+        (github.event_name == 'pull_request' && github.event.pull_request.draft == false) ||
+        (github.event_name == 'push' && needs.check-pr.outputs.has-open-pr == 'false')
+      )
     steps:
       - uses: actions/checkout@v4
 
@@ -96,14 +136,19 @@ jobs:
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: macos-build-pr${{ github.event.pull_request.number }}-${{ github.sha }}
+          name: macos-build-${{ github.event.pull_request.number || github.ref_name }}-${{ github.sha }}
           path: |
             out/make/**
             SSW.YakShaver-darwin-*
 
   build-linux:
     runs-on: ubuntu-latest
-    if: vars.BUILD_LINUX == 'true' && github.event.pull_request.draft == false
+    needs: [check-pr]
+    if: |
+      vars.BUILD_LINUX == 'true' && (
+        (github.event_name == 'pull_request' && github.event.pull_request.draft == false) ||
+        (github.event_name == 'push' && needs.check-pr.outputs.has-open-pr == 'false')
+      )
     steps:
       - uses: actions/checkout@v4
 
@@ -137,7 +182,7 @@ jobs:
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: linux-build-pr${{ github.event.pull_request.number }}-${{ github.sha }}
+          name: linux-build-${{ github.event.pull_request.number || github.ref_name }}-${{ github.sha }}
           path: |
             out/make/**
             SSW.YakShaver-linux-*
@@ -152,6 +197,7 @@ jobs:
     steps:
       - name: Comment PR with download links
         uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
         with:
           script: |
             const artifactsUrl = `https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`;

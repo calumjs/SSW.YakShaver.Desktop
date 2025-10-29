@@ -5,12 +5,13 @@ import { FFmpegService } from "../services/ffmpeg/ffmpeg-service";
 import { OpenAIService } from "../services/openai/openai-service";
 import {
   INITIAL_SUMMARY_PROMPT,
-  TASK_EXECUTION_PROMPT,
+  buildTaskExecutionPrompt,
 } from "../services/openai/prompts";
 import { IPC_CHANNELS } from "./channels";
 import { RecordingService } from "../services/recording/recording-service";
 import { MCPOrchestrator } from "../services/mcp/mcp-orchestrator";
 import { LlmStorage, type LLMConfig } from "../services/storage/llm-storage";
+import { SettingsStore } from "../services/storage/settings-store";
 import { formatErrorMessage } from "../utils/error-utils";
 
 export class OpenAIIPCHandlers {
@@ -18,6 +19,7 @@ export class OpenAIIPCHandlers {
   private recordingService = RecordingService.getInstance();
   private ffmpegService = FFmpegService.getInstance();
   private secureStorage = LlmStorage.getInstance();
+  private settingsStore = SettingsStore.getInstance();
   private mcpOrchestrator: MCPOrchestrator;
 
   constructor() {
@@ -75,10 +77,14 @@ export class OpenAIIPCHandlers {
   private async executeGeneratedTaskViaMCP(
     intermediateOutput: string,
   ): Promise<string | null> {
+    const customPrompt = this.settingsStore.getCustomPrompt();
+    const systemPrompt = buildTaskExecutionPrompt(customPrompt);
+    
     const result = await this.mcpOrchestrator.processMessage(
       intermediateOutput,
       {
-        systemPrompt: TASK_EXECUTION_PROMPT,
+        systemPrompt,
+        requireStructuredOutput: true, // Enable structured JSON output for task execution
       },
     );
     return result.final;
