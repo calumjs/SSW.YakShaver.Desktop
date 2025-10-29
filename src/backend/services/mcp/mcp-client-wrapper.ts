@@ -22,27 +22,33 @@ export class MCPClientWrapper {
   }
 
   private buildTransport(): StreamableHTTPClientTransport | StdioClientTransport {
-    if (this.serverConfig.transport === "streamableHttp") {
-      const headers: Record<string, string> = {};
-      if (this.serverConfig.headers) {
-        for (const [k, v] of Object.entries(this.serverConfig.headers)) {
-          headers[k] = v;
+    switch (this.serverConfig.transport) {
+      case "streamableHttp": {
+        const headers: Record<string, string> = {};
+        if (this.serverConfig.headers) {
+          for (const [k, v] of Object.entries(this.serverConfig.headers)) {
+            headers[k] = v;
+          }
         }
+        const options: StreamableHTTPClientTransportOptions = {
+          requestInit: { headers },
+        };
+        return new StreamableHTTPClientTransport(new URL(this.serverConfig.url), options);
       }
-      const options: StreamableHTTPClientTransportOptions = {
-        requestInit: { headers },
-      };
-      return new StreamableHTTPClientTransport(new URL(this.serverConfig.url), options);
-    } else if (this.serverConfig.transport === "stdio") {
-      return new StdioClientTransport({
-        command: this.serverConfig.command,
-        args: this.serverConfig.args,
-        env: this.serverConfig.env,
-        cwd: this.serverConfig.cwd,
-        stderr: this.serverConfig.stderr,
-      });
+      case "stdio":
+        return new StdioClientTransport({
+          command: this.serverConfig.command,
+          args: this.serverConfig.args,
+          env: this.serverConfig.env,
+          cwd: this.serverConfig.cwd,
+          stderr: this.serverConfig.stderr,
+        });
+      default: {
+        // Exhaustive check - this should never happen
+        const _exhaustive: never = this.serverConfig;
+        return _exhaustive;
+      }
     }
-    throw new Error(`Unsupported transport: ${this.serverConfig.transport}`);
   }
 
   async connect(): Promise<void> {
