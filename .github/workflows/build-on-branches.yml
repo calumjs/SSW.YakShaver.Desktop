@@ -12,15 +12,14 @@ permissions:
 env:
   APP_NAME: SSW.YakShaver
   NODE_VERSION: 20
-  # Build configuration: Set to true to build for each platform
-  BUILD_WINDOWS: true
-  BUILD_MACOS: false
-  BUILD_LINUX: false
+  # Build configuration: Set BUILD_WINDOWS, BUILD_MACOS, BUILD_LINUX as repository variables or secrets
+  # To enable a platform, set the corresponding variable to 'true' in repository settings
+  # Repository variables: Settings > Secrets and variables > Actions > Variables tab
 
 jobs:
   build-windows:
     runs-on: windows-latest
-    if: env.BUILD_WINDOWS == 'true'
+    if: vars.BUILD_WINDOWS == 'true' || secrets.BUILD_WINDOWS == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -63,7 +62,7 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
-    if: env.BUILD_MACOS == 'true'
+    if: vars.BUILD_MACOS == 'true' || secrets.BUILD_MACOS == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -104,7 +103,7 @@ jobs:
 
   build-linux:
     runs-on: ubuntu-latest
-    if: env.BUILD_LINUX == 'true'
+    if: vars.BUILD_LINUX == 'true' || secrets.BUILD_LINUX == 'true'
     steps:
       - uses: actions/checkout@v4
 
