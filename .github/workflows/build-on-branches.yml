@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 env:
   APP_NAME: SSW.YakShaver
@@ -140,3 +141,45 @@ jobs:
           path: |
             out/make/**
             SSW.YakShaver-linux-*
+
+  comment-pr:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: always() && (needs.build-windows.result == 'success' || needs.build-macos.result == 'success' || needs.build-linux.result == 'success')
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Comment PR with download links
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const artifactsUrl = `https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+            const platforms = [];
+            
+            if ('${{ needs.build-windows.result }}' === 'success') {
+              platforms.push('🪟 **Windows**');
+            }
+            if ('${{ needs.build-macos.result }}' === 'success') {
+              platforms.push('🍎 **macOS**');
+            }
+            if ('${{ needs.build-linux.result }}' === 'success') {
+              platforms.push('🐧 **Linux**');
+            }
+            
+            const body = `## 📦 Build Artifacts Available
+            
+            Build completed for the following platforms:
+            ${platforms.join('\n')}
+            
+            📥 **Download artifacts:** [View workflow run](${artifactsUrl})
+            
+            Navigate to the "Artifacts" section at the bottom of the workflow run page to download the build files.
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.payload.pull_request.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
