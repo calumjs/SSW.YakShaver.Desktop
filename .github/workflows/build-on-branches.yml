@@ -1,12 +1,15 @@
 name: Build on All Branches
 
 on:
-  pull_request:
-    types: [opened, synchronize]  # Trigger when PR is opened or when new commits are pushed to PR
+  issue_comment:
+    types: [created]  # Trigger when a comment is created on a PR
+  # Note: Automatically building on every PR update is disabled to save CI resources.
+  # Comment "/build", "/test-build", or "/rebuild" on a PR to trigger a build manually.
 
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 env:
   APP_NAME: SSW.YakShaver
@@ -17,9 +20,43 @@ env:
   # Note: Use repository variables (not secrets) for job-level if conditions
 
 jobs:
+  check-trigger:
+    runs-on: ubuntu-latest
+    outputs:
+      should-build: ${{ steps.check.outputs.should-build }}
+      is-draft: ${{ steps.check.outputs.is-draft }}
+    steps:
+      - name: Check build trigger and PR status
+        id: check
+        run: |
+          # Comment trigger - check if it's a build command
+          comment="${{ github.event.comment.body }}"
+          if [[ "$comment" =~ ^/(build|test-build|rebuild) ]]; then
+            echo "should-build=true" >> $GITHUB_OUTPUT
+            # Get PR details to check draft status
+            PR_NUMBER="${{ github.event.issue.number }}"
+            PR_RESPONSE=$(gh pr view $PR_NUMBER --json isDraft,number,headRefName || echo '{"isDraft":false}')
+            IS_DRAFT=$(echo "$PR_RESPONSE" | jq -r '.isDraft // false')
+            echo "is-draft=$IS_DRAFT" >> $GITHUB_OUTPUT
+          else
+            echo "should-build=false" >> $GITHUB_OUTPUT
+            echo "is-draft=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Install GitHub CLI
+        run: |
+          type -p curl >/dev/null || (apt-get update && apt-get install curl -y)
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          apt-get update && apt-get install gh -y
+
   build-windows:
+    needs: check-trigger
     runs-on: windows-latest
-    if: vars.BUILD_WINDOWS == 'true' && github.event.pull_request.draft == false
+    if: |
+      vars.BUILD_WINDOWS == 'true' && 
+      needs.check-trigger.outputs.should-build == 'true' &&
+      needs.check-trigger.outputs.is-draft == 'false'
     steps:
       - uses: actions/checkout@v4
 
@@ -55,14 +92,18 @@ jobs:
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-build-pr${{ github.event.pull_request.number }}-${{ github.sha }}
+          name: windows-build-pr${{ github.event.issue.number }}-${{ github.sha }}
           path: |
             out/make/**
             SSW.YakShaver-windows-*
 
   build-macos:
+    needs: check-trigger
     runs-on: macos-latest
-    if: vars.BUILD_MACOS == 'true' && github.event.pull_request.draft == false
+    if: |
+      vars.BUILD_MACOS == 'true' && 
+      needs.check-trigger.outputs.should-build == 'true' &&
+      needs.check-trigger.outputs.is-draft == 'false'
     steps:
       - uses: actions/checkout@v4
 
@@ -96,14 +137,18 @@ jobs:
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: macos-build-pr${{ github.event.pull_request.number }}-${{ github.sha }}
+          name: macos-build-pr${{ github.event.issue.number }}-${{ github.sha }}
           path: |
             out/make/**
             SSW.YakShaver-darwin-*
 
   build-linux:
+    needs: check-trigger
     runs-on: ubuntu-latest
-    if: vars.BUILD_LINUX == 'true' && github.event.pull_request.draft == false
+    if: |
+      vars.BUILD_LINUX == 'true' && 
+      needs.check-trigger.outputs.should-build == 'true' &&
+      needs.check-trigger.outputs.is-draft == 'false'
     steps:
       - uses: actions/checkout@v4
 
@@ -137,13 +182,13 @@ jobs:
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: linux-build-pr${{ github.event.pull_request.number }}-${{ github.sha }}
+          name: linux-build-pr${{ github.event.issue.number }}-${{ github.sha }}
           path: |
             out/make/**
             SSW.YakShaver-linux-*
 
   comment-pr:
-    needs: [build-windows, build-macos, build-linux]
+    needs: [check-trigger, build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     if: always() && (needs.build-windows.result == 'success' || needs.build-macos.result == 'success' || needs.build-linux.result == 'success')
     permissions:
@@ -178,7 +223,7 @@ jobs:
             `;
             
             github.rest.issues.createComment({
-              issue_number: context.payload.pull_request.number,
+              issue_number: context.payload.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
               body: body
