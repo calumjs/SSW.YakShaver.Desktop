@@ -59,7 +59,7 @@ jobs:
           name: windows-build-${{ github.ref_name }}-${{ github.sha }}
           path: |
             out/make/**
-            SSW.YakShaver-windows-*/
+            SSW.YakShaver-windows-*
 
   build-macos:
     runs-on: macos-latest
