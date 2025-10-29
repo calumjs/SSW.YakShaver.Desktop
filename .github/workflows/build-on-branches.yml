@@ -18,7 +18,7 @@ env:
 jobs:
   build-windows:
     runs-on: windows-latest
-    if: vars.BUILD_WINDOWS == 'true'
+    if: vars.BUILD_WINDOWS == 'true' && github.event.pull_request.draft == false
     steps:
       - uses: actions/checkout@v4
 
@@ -61,7 +61,7 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
-    if: vars.BUILD_MACOS == 'true'
+    if: vars.BUILD_MACOS == 'true' && github.event.pull_request.draft == false
     steps:
       - uses: actions/checkout@v4
 
@@ -102,7 +102,7 @@ jobs:
 
   build-linux:
     runs-on: ubuntu-latest
-    if: vars.BUILD_LINUX == 'true'
+    if: vars.BUILD_LINUX == 'true' && github.event.pull_request.draft == false
     steps:
       - uses: actions/checkout@v4
 
