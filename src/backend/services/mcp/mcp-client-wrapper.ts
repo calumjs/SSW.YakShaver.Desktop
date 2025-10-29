@@ -22,31 +22,43 @@ export class MCPClientWrapper {
   }
 
   private buildTransport(): StreamableHTTPClientTransport | StdioClientTransport {
-    if (this.serverConfig.transport === "streamableHttp") {
-      const headers: Record<string, string> = {};
-      if (this.serverConfig.headers) {
-        for (const [k, v] of Object.entries(this.serverConfig.headers)) {
-          headers[k] = v;
+    switch (this.serverConfig.transport) {
+      case "streamableHttp": {
+        const headers: Record<string, string> = {};
+        if (this.serverConfig.headers) {
+          for (const [k, v] of Object.entries(this.serverConfig.headers)) {
+            headers[k] = v;
+          }
         }
+        const options: StreamableHTTPClientTransportOptions = {
+          requestInit: { headers },
+        };
+        return new StreamableHTTPClientTransport(new URL(this.serverConfig.url), options);
       }
-      const options: StreamableHTTPClientTransportOptions = {
-        requestInit: { headers },
-      };
-      return new StreamableHTTPClientTransport(new URL(this.serverConfig.url), options);
-    } else if (this.serverConfig.transport === "stdio") {
-      // Don't worry stdio for now, this is local MCP server, supported later
-      // TODO: Support local MCP servers via stdio transport https://github.com/SSWConsulting/SSW.YakShaver/issues/3008
-      return new StdioClientTransport({
-        command: this.serverConfig.url,
-        // Future: args, env, cwd, stderr
-      });
+      case "stdio":
+        return new StdioClientTransport({
+          command: this.serverConfig.command,
+          args: this.serverConfig.args,
+          env: this.serverConfig.env,
+          cwd: this.serverConfig.cwd,
+          stderr: this.serverConfig.stderr,
+        });
+      default: {
+        // Exhaustive check - this should never happen
+        const _exhaustive: never = this.serverConfig;
+        return _exhaustive;
+      }
     }
-    throw new Error(`Unsupported transport: ${this.serverConfig.transport}`);
   }
 
   async connect(): Promise<void> {
     if (this.isConnected) return;
-    console.log(`[MCP] Connecting to '${this.serverConfig.name}' at ${this.serverConfig.url}...`);
+    if (this.serverConfig.transport === "streamableHttp") {
+      console.log(`[MCP] Connecting to '${this.serverConfig.name}' at ${this.serverConfig.url}...`);
+    } else if (this.serverConfig.transport === "stdio") {
+      const cmdStr = [this.serverConfig.command, ...(this.serverConfig.args || [])].join(" ");
+      console.log(`[MCP] Connecting to '${this.serverConfig.name}' via stdio: ${cmdStr}`);
+    }
     await this.client.connect(this.transport);
     this.isConnected = true;
     console.log("[MCP] Connected.");

@@ -148,9 +148,28 @@ export function McpServerManager() {
                             {server.description && (
                               <p className="text-white/70 text-sm mt-1">{server.description}</p>
                             )}
-                            <p className="text-white/50 text-sm mt-2 font-mono break-all">
-                              {server.url}
-                            </p>
+                            {server.transport === "streamableHttp" ? (
+                              <p className="text-white/50 text-sm mt-2 font-mono break-all">
+                                {server.url}
+                              </p>
+                            ) : (
+                              <div className="mt-2">
+                                <p className="text-white/50 text-sm font-mono">
+                                  {server.command}
+                                  {server.args && server.args.length > 0 && (
+                                    <span className="text-white/40">
+                                      {" "}
+                                      {server.args.join(" ")}
+                                    </span>
+                                  )}
+                                </p>
+                                {server.cwd && (
+                                  <p className="text-white/40 text-xs mt-1">
+                                    CWD: {server.cwd}
+                                  </p>
+                                )}
+                              </div>
+                            )}
                             <p className="text-white/40 text-xs mt-1">
                               Transport: {server.transport}
                             </p>
