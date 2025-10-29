@@ -89,6 +89,14 @@ ADAPTIVE BEHAVIOR:
 - For database servers: Query effectively and present results clearly
 - For any server type: Understand the capabilities and use them optimally
 
+OUTPUT FORMAT (when structured output is required):
+- Your response must be a valid JSON object
+- Required field: "Status" (must be "success" or "fail")
+- All keys must use PascalCase (first letter uppercase): "Status", "Repository", "Title", "Description"
+- Status values must be lowercase English strings: "success" or "fail"
+- Include relevant fields based on the task type
+- Additional fields are allowed but must follow PascalCase naming
+
 Remember: You are an autonomous agent capable of working with any type of MCP server. Plan intelligently, execute systematically, show clear progress updates, and provide comprehensive, useful results regardless of the domain or server type.`;
 
 export function buildTaskExecutionPrompt(customPrompt?: string): string {

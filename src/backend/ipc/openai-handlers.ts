@@ -84,6 +84,7 @@ export class OpenAIIPCHandlers {
       intermediateOutput,
       {
         systemPrompt,
+        requireStructuredOutput: true, // Enable structured JSON output for task execution
       },
     );
     return result.final;

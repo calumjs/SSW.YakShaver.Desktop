@@ -53,6 +53,9 @@ export class OpenAIService {
   async sendMessage(
     message: ChatCompletionMessageParam[],
     tools: ChatCompletionTool[] = [],
+    options?: {
+      responseFormat?: { type: "json_object" } | { type: "json_schema"; json_schema: { name: string; schema: Record<string, unknown>; strict: boolean } };
+    },
   ): Promise<ChatCompletion> {
     await this.ensureClient();
     if (!this.configured || !this.client) {
@@ -64,6 +67,7 @@ export class OpenAIService {
       model: await this.getModel(),
       messages: message,
       tools: tools,
+      ...(options?.responseFormat && { response_format: options.responseFormat }),
     });
     return response;
   }

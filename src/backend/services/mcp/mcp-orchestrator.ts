@@ -2,6 +2,7 @@ import { BrowserWindow } from "electron";
 import type OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/index.js";
 import { OpenAIService } from "../openai/openai-service.js";
+import { TASK_OUTPUT_JSON_SCHEMA } from "../openai/task-output-schema.js";
 import { McpStorage } from "../storage/mcp-storage.js";
 import { MCPClientWrapper } from "./mcp-client-wrapper.js";
 import type { MCPServerConfig } from "./types.js";
@@ -200,6 +201,7 @@ export class MCPOrchestrator {
       serverFilter?: string[]; // if provided, only include tools from these servers
       systemPrompt?: string;
       maxToolIterations?: number; // safety cap to avoid infinite loops
+      requireStructuredOutput?: boolean; // if true, final answer must be JSON matching schema
     } = {}
   ): Promise<{
     final: string | null;
@@ -278,6 +280,52 @@ export class MCPOrchestrator {
           type: "final_result",
           message: "Generate final result",
         });
+
+        // If structured output is required, make one more call to format as JSON
+        if (options.requireStructuredOutput) {
+          const finalMessages: ChatCompletionMessageParam[] = [
+            ...messages,
+            {
+              role: "assistant",
+              content: assistantMessage?.content ?? "",
+            },
+            {
+              role: "user",
+              content: "Format your response as a JSON object matching the required schema with Status field and PascalCase keys.",
+            },
+          ];
+
+          try {
+            const structuredResponse = await this.llmClient.sendMessage(
+              finalMessages,
+              [],
+              {
+                responseFormat: {
+                  type: "json_schema",
+                  json_schema: TASK_OUTPUT_JSON_SCHEMA,
+                },
+              },
+            );
+
+            const structuredContent =
+              structuredResponse.choices[0]?.message?.content ?? null;
+            return {
+              final: structuredContent,
+              transcript: messages,
+            };
+          } catch (err) {
+            console.warn(
+              "[MCPOrchestrator] Failed to get structured output, returning raw:",
+              err
+            );
+            // Fallback to raw content
+            return {
+              final: assistantMessage?.content ?? null,
+              transcript: messages,
+            };
+          }
+        }
+
         return {
           final: assistantMessage?.content ?? null,
           transcript: messages,
