@@ -1,3 +1,10 @@
+export type ChromeDevtoolsConfig = {
+  testModeEnabled?: boolean;
+  browserUrl?: string;
+  consoleLogLimit?: number;
+  networkLogLimit?: number;
+};
+
 export type MCPServerConfig = {
   name: string;
   description?: string;
@@ -6,4 +13,5 @@ export type MCPServerConfig = {
   headers?: Record<string, string>;
   version?: string;
   timeoutMs?: number;
+  chromeDevtools?: ChromeDevtoolsConfig;
 };

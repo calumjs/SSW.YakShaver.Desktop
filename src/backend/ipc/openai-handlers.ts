@@ -12,6 +12,8 @@ import { RecordingService } from "../services/recording/recording-service";
 import { MCPOrchestrator } from "../services/mcp/mcp-orchestrator";
 import { LlmStorage, type LLMConfig } from "../services/storage/llm-storage";
 import { formatErrorMessage } from "../utils/error-utils";
+import { ChromeTestModeService } from "../services/mcp/chrome-test-mode-service";
+import type { ChromeCaptureSnapshot } from "../services/mcp/chrome-devtools-monitor";
 
 export class OpenAIIPCHandlers {
   private openAiService = OpenAIService.getInstance();
@@ -19,6 +21,7 @@ export class OpenAIIPCHandlers {
   private ffmpegService = FFmpegService.getInstance();
   private secureStorage = LlmStorage.getInstance();
   private mcpOrchestrator: MCPOrchestrator;
+  private chromeTestMode = ChromeTestModeService.getInstance();
 
   constructor() {
     this.mcpOrchestrator = new MCPOrchestrator(
@@ -105,16 +108,21 @@ export class OpenAIIPCHandlers {
           this.emitProgress("transcribing");
           const transcript =
             await this.openAiService.transcribeAudio(outputFilePath);
+          const chromeArtifacts = this.chromeTestMode.consumeArtifacts(inputFilePath);
+          const transcriptWithContext = this.appendChromeContext(
+            transcript ?? "",
+            chromeArtifacts,
+          );
 
-          this.emitProgress("generating_task", { transcript });
+          this.emitProgress("generating_task", { transcript: transcriptWithContext });
           const intermediateOutput = await this.openAiService.generateOutput(
             INITIAL_SUMMARY_PROMPT,
-            transcript,
+            transcriptWithContext,
             { jsonMode: true },
           );
 
           this.emitProgress("executing_task", {
-            transcript,
+            transcript: transcriptWithContext,
             intermediateOutput,
           });
           const finalOutput =
@@ -132,6 +140,51 @@ export class OpenAIIPCHandlers {
         }
       },
     );
+  }
+
+  private appendChromeContext(
+    transcript: string,
+    artifacts: ChromeCaptureSnapshot | null,
+  ): string {
+    if (!artifacts) return transcript;
+    const sections: string[] = [];
+    const trimmed = (transcript || "").trim();
+    if (trimmed) {
+      sections.push(trimmed);
+    }
+
+    if (artifacts.consoleLogs.length) {
+      sections.push("\n=== Chrome Console Logs ===");
+      artifacts.consoleLogs.forEach((entry) => {
+        const timestamp = new Date(entry.timestamp).toISOString();
+        const source = entry.url ? ` (${entry.url})` : "";
+        sections.push(
+          `[${timestamp}] [${entry.level}]${source}: ${entry.text || "(no message)"}`,
+        );
+      });
+    }
+
+    if (artifacts.networkRequests.length) {
+      sections.push("\n=== Chrome Network Requests ===");
+      artifacts.networkRequests.forEach((request) => {
+        const status =
+          typeof request.status === "number"
+            ? `${request.status}`
+            : request.errorText
+              ? "ERR"
+              : "-";
+        const method = request.method ?? "GET";
+        const url = request.url ?? "(unknown url)";
+        const detail = request.errorText
+          ? ` :: ${request.errorText}`
+          : request.statusText
+            ? ` :: ${request.statusText}`
+            : "";
+        sections.push(`[${method}] [${status}] ${url}${detail}`);
+      });
+    }
+
+    return sections.join("\n");
   }
 
   private registerHandlers(): void {
