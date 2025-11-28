@@ -13,6 +13,7 @@ import { VideoIPCHandlers } from "./ipc/video-handlers";
 import { createMcpOrchestrator } from "./services/mcp/mcp-orchestrator-factory";
 import { RecordingControlBarWindow } from "./services/recording/control-bar-window";
 import { RecordingService } from "./services/recording/recording-service";
+import { ChromeTestModeIPCHandlers } from "./ipc/chrome-test-mode-handlers";
 
 updateElectronApp();
 
@@ -75,6 +76,7 @@ let _videoHandlers: VideoIPCHandlers;
 let _openAIHandlers: OpenAIIPCHandlers;
 let _mcpHandlers: McpIPCHandlers;
 let _settingsHandlers: SettingsIPCHandlers;
+let _chromeTestModeHandlers: ChromeTestModeIPCHandlers;
 let unregisterEventForwarders: (() => void) | undefined;
 
 app.whenReady().then(async () => {
@@ -102,6 +104,7 @@ app.whenReady().then(async () => {
   }
 
   _screenRecordingHandlers = new ScreenRecordingIPCHandlers();
+  _chromeTestModeHandlers = new ChromeTestModeIPCHandlers();
 
   // Create MCP orchestrator with factory to ensure initialization completes
   const mcpOrchestrator = await createMcpOrchestrator({ eagerCreate: true });

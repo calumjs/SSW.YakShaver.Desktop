@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useYouTubeAuth } from "../../contexts/YouTubeAuthContext";
 import { useScreenRecording } from "../../hooks/useScreenRecording";
-import { AuthStatus, UploadStatus } from "../../types";
+import { AuthStatus, UploadStatus, type ChromeTestModeStatus } from "../../types";
 import { McpServerManager } from "../mcp/McpServerManager";
 import { CustomPromptDialog } from "../settings/CustomPromptDialog";
 import { OpenAIKeyManager } from "../openai/OpenAIKeyManager";
@@ -19,6 +19,8 @@ export function ScreenRecorder() {
   const { authState, setUploadResult, setUploadStatus } = useYouTubeAuth();
   const { isRecording, isProcessing, start, stop } = useScreenRecording();
   const [isTranscribing, _] = useState(false);
+  const [chromeStatus, setChromeStatus] = useState<ChromeTestModeStatus | null>(null);
+  const [isLaunchingChrome, setIsLaunchingChrome] = useState(false);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -49,6 +51,35 @@ export function ScreenRecorder() {
   const handleStartRecording = async (sourceId: string) => {
     setPickerOpen(false);
     await start(sourceId);
+  };
+
+  const refreshChromeStatus = useCallback(async () => {
+    try {
+      const status = await window.electronAPI.chromeTestMode.getStatus();
+      setChromeStatus(status);
+    } catch (error) {
+      console.error("Failed to refresh Chrome MCP status", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshChromeStatus();
+  }, [refreshChromeStatus]);
+
+  const handleOpenChrome = async () => {
+    setIsLaunchingChrome(true);
+    try {
+      const result = await window.electronAPI.chromeTestMode.openChrome();
+      if (result.success) {
+        toast.success(result.message ?? "Chrome launched for monitoring");
+      } else {
+        toast.error(result.error ?? "Unable to launch Chrome");
+      }
+    } catch (error) {
+      toast.error(`Unable to launch Chrome: ${String(error)}`);
+    } finally {
+      setIsLaunchingChrome(false);
+    }
   };
 
   const resetPreview = () => {
@@ -116,7 +147,17 @@ export function ScreenRecorder() {
                 ? "Transcribing..."
                 : "Start Recording"}
           </Button>
-          <McpServerManager />
+          {chromeStatus?.enabled && (
+            <Button
+              variant="secondary"
+              className="bg-blue-600 hover:bg-blue-500"
+              onClick={handleOpenChrome}
+              disabled={isLaunchingChrome}
+            >
+              {isLaunchingChrome ? "Opening Chrome..." : "Open Monitored Chrome"}
+            </Button>
+          )}
+          <McpServerManager onServersChanged={() => void refreshChromeStatus()} />
           <CustomPromptDialog />
           <OpenAIKeyManager />
         </div>

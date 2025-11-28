@@ -52,6 +52,10 @@ const IPC_CHANNELS = {
   TRANSCRIPTION_COMPLETED: "transcription-completed",
   TRANSCRIPTION_ERROR: "transcription-error",
 
+  // Chrome test mode
+  CHROME_TEST_MODE_GET_STATUS: "chrome:test-mode:get-status",
+  CHROME_TEST_MODE_OPEN_BROWSER: "chrome:test-mode:open-browser",
+
   // Automated workflow
   WORKFLOW_PROGRESS: "workflow:progress",
   WORKFLOW_RETRY_TASK_EXECUTION: "workflow:retry-task-execution",
@@ -178,6 +182,11 @@ const electronAPI = {
       ipcRenderer.invoke(IPC_CHANNELS.MCP_UPDATE_SERVER, name, config),
     removeServer: (name: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.MCP_REMOVE_SERVER, name),
+  },
+  chromeTestMode: {
+    getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.CHROME_TEST_MODE_GET_STATUS),
+    openChrome: () =>
+      ipcRenderer.invoke(IPC_CHANNELS.CHROME_TEST_MODE_OPEN_BROWSER),
   },
   settings: {
     getCustomPrompt: () =>

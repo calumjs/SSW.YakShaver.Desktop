@@ -4,10 +4,12 @@ import type { MCPOrchestrator } from "../services/mcp/mcp-orchestrator";
 import type { MCPServerConfig } from "../services/mcp/types";
 import { SettingsStore } from "../services/storage/settings-store";
 import { IPC_CHANNELS } from "./channels";
+import { ChromeTestModeService } from "../services/mcp/chrome-test-mode-service";
 
 export class McpIPCHandlers {
   private orchestrator: MCPOrchestrator;
   private settingsStore: SettingsStore;
+  private chromeTestMode = ChromeTestModeService.getInstance();
 
   constructor(orchestrator: MCPOrchestrator) {
     this.orchestrator = orchestrator;
@@ -24,6 +26,7 @@ export class McpIPCHandlers {
       IPC_CHANNELS.MCP_ADD_SERVER,
       async (_event: IpcMainInvokeEvent, config: MCPServerConfig) => {
         await this.orchestrator.addServer(config);
+        this.chromeTestMode.invalidate();
         return { success: true };
       },
     );
@@ -36,6 +39,7 @@ export class McpIPCHandlers {
         config: MCPServerConfig,
       ) => {
         await this.orchestrator.updateServer(name, config);
+        this.chromeTestMode.invalidate();
         return { success: true };
       },
     );
@@ -44,6 +48,7 @@ export class McpIPCHandlers {
       IPC_CHANNELS.MCP_REMOVE_SERVER,
       async (_event: IpcMainInvokeEvent, name: string) => {
         await this.orchestrator.removeServer(name);
+        this.chromeTestMode.invalidate();
         return { success: true };
       },
     );

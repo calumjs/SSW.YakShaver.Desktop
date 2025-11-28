@@ -113,3 +113,12 @@ export interface WorkflowProgress {
   finalOutput?: string;
   error?: string;
 }
+
+export interface ChromeTestModeStatus {
+  hasChromeServer: boolean;
+  enabled: boolean;
+  serverName?: string;
+  browserUrl?: string;
+  consoleLogLimit: number;
+  networkLogLimit: number;
+}

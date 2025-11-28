@@ -47,6 +47,10 @@ export const IPC_CHANNELS = {
   MCP_UPDATE_SERVER: "mcp:update-server",
   MCP_REMOVE_SERVER: "mcp:remove-server",
 
+  // Chrome test mode
+  CHROME_TEST_MODE_GET_STATUS: "chrome:test-mode:get-status",
+  CHROME_TEST_MODE_OPEN_BROWSER: "chrome:test-mode:open-browser",
+
   // Automated workflow
   WORKFLOW_PROGRESS: "workflow:progress",
   WORKFLOW_RETRY_TASK_EXECUTION: "workflow:retry-task-execution",

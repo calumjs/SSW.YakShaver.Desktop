@@ -23,9 +23,13 @@ import {
 } from "../ui/dialog";
 import { type MCPServerConfig, McpServerForm } from "./McpServerForm";
 
+type McpServerManagerProps = {
+  onServersChanged?: (servers: MCPServerConfig[]) => void;
+};
+
 type ViewMode = "list" | "add" | "edit";
 
-export function McpServerManager() {
+export function McpServerManager({ onServersChanged }: McpServerManagerProps = {}) {
   const [servers, setServers] = useState<MCPServerConfig[]>([]);
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -38,11 +42,12 @@ export function McpServerManager() {
     try {
       const list = await ipcClient.mcp.listServers();
       setServers(list);
+      onServersChanged?.(list);
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : String(e);
       toast.error(`Failed to load servers: ${errorMessage}`);
     }
-  }, []);
+  }, [onServersChanged]);
 
   useEffect(() => {
     void loadServers();

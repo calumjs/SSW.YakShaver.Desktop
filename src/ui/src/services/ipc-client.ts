@@ -11,6 +11,7 @@ import type {
   UserInfo,
   VideoUploadResult,
   YouTubeConfig,
+  ChromeTestModeStatus,
 } from "../types";
 
 declare global {
@@ -102,6 +103,15 @@ declare global {
       settings: {
         getCustomPrompt: () => Promise<string>;
         setCustomPrompt: (prompt: string) => Promise<{ success: boolean }>;
+      };
+      chromeTestMode: {
+        getStatus: () => Promise<ChromeTestModeStatus>;
+        openChrome: () => Promise<{
+          success: boolean;
+          alreadyRunning?: boolean;
+          message?: string;
+          error?: string;
+        }>;
       };
     };
   }
