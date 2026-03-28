@@ -2,10 +2,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../../config/index.js";
 import type {
   LLMMessage,
-  LLMOptions,
   LLMProvider,
+  LLMRequestOptions,
   LLMResponse,
-  LLMTool,
+  LLMToolDef,
 } from "../../types/index.js";
 
 export class ClaudeProvider implements LLMProvider {
@@ -21,77 +21,81 @@ export class ClaudeProvider implements LLMProvider {
     return !!config.llm.claudeApiKey;
   }
 
-  async generateText(
-    systemPrompt: string,
-    userMessage: string,
-    options?: LLMOptions,
-  ): Promise<string> {
-    const response = await this.client.messages.create({
-      model: this.model,
-      max_tokens: options?.maxTokens ?? 4096,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }],
-    });
-
-    const textBlock = response.content.find((b) => b.type === "text");
-    return textBlock?.type === "text" ? textBlock.text : "";
-  }
-
-  async sendMessageWithTools(
+  async sendMessages(
     messages: LLMMessage[],
-    tools: LLMTool[],
+    tools: LLMToolDef[],
+    options?: LLMRequestOptions,
   ): Promise<LLMResponse> {
-    // Extract system prompt from messages
     const systemMsg = messages.find((m) => m.role === "system");
     const nonSystemMessages = messages.filter((m) => m.role !== "system");
 
-    // Convert messages to Anthropic format
     const anthropicMessages = this.convertMessages(nonSystemMessages);
-
-    // Convert tools to Anthropic format
     const anthropicTools = tools.map((t) => ({
       name: t.function.name,
       description: t.function.description,
-      input_schema: t.function
-        .parameters as Anthropic.Tool.InputSchema,
+      input_schema: t.function.parameters as Anthropic.Tool.InputSchema,
     }));
 
-    const response = await this.client.messages.create({
+    const maxTokens = options?.maxTokens ?? 16384;
+
+    const requestParams: Anthropic.MessageCreateParams = {
       model: this.model,
-      max_tokens: 4096,
+      max_tokens: maxTokens,
       ...(systemMsg?.content && { system: systemMsg.content }),
       messages: anthropicMessages,
       ...(anthropicTools.length > 0 && { tools: anthropicTools }),
-    });
+    };
 
-    // Convert response back to common format
-    const textBlocks = response.content.filter((b) => b.type === "text");
-    const toolUseBlocks = response.content.filter(
-      (b) => b.type === "tool_use",
-    );
+    // Extended thinking support
+    if (options?.thinkingBudget && options.thinkingBudget > 0) {
+      requestParams.thinking = {
+        type: "enabled",
+        budget_tokens: options.thinkingBudget,
+      };
+    }
 
-    const content =
-      textBlocks.length > 0
-        ? textBlocks.map((b) => (b.type === "text" ? b.text : "")).join("")
-        : null;
+    const response = await this.client.messages.create(requestParams);
+
+    // Extract thinking, text, and tool_use blocks
+    let thinking: string | null = null;
+    const textParts: string[] = [];
+    const toolUseBlocks: Array<{
+      id: string;
+      name: string;
+      input: unknown;
+    }> = [];
+
+    for (const block of response.content) {
+      if (block.type === "thinking") {
+        thinking = block.thinking;
+      } else if (block.type === "text") {
+        textParts.push(block.text);
+      } else if (block.type === "tool_use") {
+        toolUseBlocks.push({
+          id: block.id,
+          name: block.name,
+          input: block.input,
+        });
+      }
+    }
+
+    const content = textParts.length > 0 ? textParts.join("") : null;
 
     const toolCalls =
       toolUseBlocks.length > 0
-        ? toolUseBlocks.map((b) => {
-            if (b.type !== "tool_use") throw new Error("Unexpected block type");
-            return {
-              id: b.id,
-              type: "function" as const,
-              function: {
-                name: b.name,
-                arguments: JSON.stringify(b.input),
-              },
-            };
-          })
+        ? toolUseBlocks.map((b) => ({
+            id: b.id,
+            type: "function" as const,
+            function: {
+              name: b.name,
+              arguments: JSON.stringify(b.input),
+            },
+          }))
         : null;
 
     return {
       content,
+      thinking,
       toolCalls,
       finishReason:
         response.stop_reason === "end_turn"
@@ -102,14 +106,21 @@ export class ClaudeProvider implements LLMProvider {
     };
   }
 
-  private convertMessages(
-    messages: LLMMessage[],
-  ): Anthropic.MessageParam[] {
+  private convertMessages(messages: LLMMessage[]): Anthropic.MessageParam[] {
     const result: Anthropic.MessageParam[] = [];
 
     for (const msg of messages) {
       if (msg.role === "assistant") {
         const content: Anthropic.ContentBlockParam[] = [];
+
+        // Re-emit thinking block if present (required by Anthropic API)
+        if (msg.thinking) {
+          content.push({
+            type: "thinking",
+            thinking: msg.thinking,
+          } as Anthropic.ContentBlockParam);
+        }
+
         if (msg.content) {
           content.push({ type: "text", text: msg.content });
         }

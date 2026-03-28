@@ -1,3 +1,5 @@
+// ---- Job types ----
+
 export interface VideoJob {
   id: string;
   status: JobStatus;
@@ -13,28 +15,35 @@ export interface VideoJob {
 export type JobStatus =
   | "queued"
   | "uploading"
-  | "converting_audio"
-  | "transcribing"
-  | "analyzing"
-  | "selecting_project"
-  | "executing_task"
+  | "processing"
   | "completed"
   | "failed";
 
 export interface JobProgress {
-  stage: JobStatus;
+  stage: string;
   message?: string;
-  transcript?: string;
-  intermediateOutput?: string;
+  thinkingExcerpt?: string;
+  toolCalls?: AgentToolCallRecord[];
+}
+
+export interface AgentToolCallRecord {
+  tool: string;
+  args?: Record<string, unknown>;
+  result?: string;
+  error?: string;
+  timestamp: number;
 }
 
 export interface JobResult {
-  transcript: string;
-  intermediateOutput: string;
   finalOutput: string;
+  transcript?: string;
   projectId?: string;
   projectName?: string;
+  toolCallCount: number;
+  turnCount: number;
 }
+
+// ---- Portal types ----
 
 export interface PortalProject {
   id: string;
@@ -52,32 +61,32 @@ export interface MCPServerConfig {
   timeoutMs?: number;
 }
 
+// ---- LLM types ----
+
 export interface LLMProvider {
-  generateText(
-    systemPrompt: string,
-    userMessage: string,
-    options?: LLMOptions,
-  ): Promise<string>;
-  sendMessageWithTools(
+  sendMessages(
     messages: LLMMessage[],
-    tools: LLMTool[],
+    tools: LLMToolDef[],
+    options?: LLMRequestOptions,
   ): Promise<LLMResponse>;
   isConfigured(): boolean;
 }
 
-export interface LLMOptions {
-  jsonMode?: boolean;
+export interface LLMRequestOptions {
   maxTokens?: number;
+  /** Enable extended thinking (Claude only). Budget in tokens. */
+  thinkingBudget?: number;
 }
 
 export interface LLMMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string | null;
+  thinking?: string;
   tool_calls?: LLMToolCall[];
   tool_call_id?: string;
 }
 
-export interface LLMTool {
+export interface LLMToolDef {
   type: "function";
   function: {
     name: string;
@@ -97,9 +106,43 @@ export interface LLMToolCall {
 
 export interface LLMResponse {
   content: string | null;
+  thinking: string | null;
   toolCalls: LLMToolCall[] | null;
   finishReason: "stop" | "tool_calls" | "length" | string;
 }
+
+// ---- Agent types ----
+
+export interface AgentTool {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  execute(args: Record<string, unknown>): Promise<string>;
+}
+
+export type AgentEventType =
+  | "thinking"
+  | "tool_call"
+  | "tool_result"
+  | "assistant_message"
+  | "turn_complete"
+  | "error";
+
+export interface AgentEvent {
+  type: AgentEventType;
+  message?: string;
+  thinking?: string;
+  toolName?: string;
+  toolArgs?: Record<string, unknown>;
+  toolResult?: string;
+  toolError?: string;
+  turnNumber?: number;
+  timestamp: number;
+}
+
+export type AgentEventListener = (event: AgentEvent) => void;
+
+// ---- Infrastructure types ----
 
 export interface TranscriptionProvider {
   transcribe(audioFilePath: string): Promise<string>;

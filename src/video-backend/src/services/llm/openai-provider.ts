@@ -6,10 +6,10 @@ import type {
 import { config } from "../../config/index.js";
 import type {
   LLMMessage,
-  LLMOptions,
   LLMProvider,
+  LLMRequestOptions,
   LLMResponse,
-  LLMTool,
+  LLMToolDef,
 } from "../../types/index.js";
 
 export class OpenAIProvider implements LLMProvider {
@@ -41,27 +41,10 @@ export class OpenAIProvider implements LLMProvider {
     return !!cfg.openaiApiKey;
   }
 
-  async generateText(
-    systemPrompt: string,
-    userMessage: string,
-    options?: LLMOptions,
-  ): Promise<string> {
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      ...(options?.jsonMode && { response_format: { type: "json_object" } }),
-      ...(options?.maxTokens && { max_tokens: options.maxTokens }),
-    });
-
-    return response.choices[0]?.message?.content ?? "";
-  }
-
-  async sendMessageWithTools(
+  async sendMessages(
     messages: LLMMessage[],
-    tools: LLMTool[],
+    tools: LLMToolDef[],
+    options?: LLMRequestOptions,
   ): Promise<LLMResponse> {
     const openaiMessages = messages.map(
       (m) =>
@@ -79,6 +62,7 @@ export class OpenAIProvider implements LLMProvider {
       model: this.model,
       messages: openaiMessages,
       tools: openaiTools.length > 0 ? openaiTools : undefined,
+      ...(options?.maxTokens && { max_tokens: options.maxTokens }),
     });
 
     const choice = response.choices[0];
@@ -86,9 +70,16 @@ export class OpenAIProvider implements LLMProvider {
 
     return {
       content: msg?.content ?? null,
+      thinking: null, // OpenAI doesn't support extended thinking
       toolCalls: msg?.tool_calls
         ? msg.tool_calls
-            .filter((tc): tc is OpenAI.Chat.Completions.ChatCompletionMessageToolCall & { type: "function" } => tc.type === "function")
+            .filter(
+              (
+                tc,
+              ): tc is OpenAI.Chat.Completions.ChatCompletionMessageToolCall & {
+                type: "function";
+              } => tc.type === "function",
+            )
             .map((tc) => ({
               id: tc.id,
               type: "function" as const,

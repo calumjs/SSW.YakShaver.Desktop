@@ -10,7 +10,6 @@ import { VideoProcessor } from "./services/pipeline/video-processor.js";
 import { getPortalClient } from "./services/portal/index.js";
 import { getQueueService } from "./services/queue/service-bus-queue.js";
 import { getStorageProvider } from "./services/storage/s3-storage.js";
-import { getTranscriptionProvider } from "./services/transcription/index.js";
 import type { MCPServerConfig } from "./types/index.js";
 
 const app = express();
@@ -28,24 +27,22 @@ app.use(errorHandler);
 
 async function startWorker(): Promise<void> {
   const llm = getLLMProvider();
-  const transcription = getTranscriptionProvider();
   const storage = getStorageProvider();
   const portal = getPortalClient();
-
-  // Load default MCP servers from environment
   const defaultMcpServers = loadMcpServersFromEnv();
 
-  const processor = new VideoProcessor(
-    llm,
-    transcription,
-    storage,
-    portal,
+  const processor = new VideoProcessor({
+    llmProvider: llm,
+    storageProvider: storage,
+    portalClient: portal,
     defaultMcpServers,
-  );
+    thinkingBudget: Number(process.env.THINKING_BUDGET ?? "10000"),
+    maxTurns: Number(process.env.MAX_AGENT_TURNS ?? "50"),
+  });
 
   const queue = getQueueService();
 
-  console.log("[Worker] Starting message processing...");
+  console.log("[Worker] Starting agentic message processing...");
   await queue.processMessages(async (job) => {
     await processor.process(job);
   });
@@ -68,44 +65,35 @@ function loadMcpServersFromEnv(): MCPServerConfig[] {
 }
 
 async function main(): Promise<void> {
-  // Start HTTP server
   app.listen(config.port, () => {
-    console.log(`[Server] YakShaver Video Backend running on port ${config.port}`);
+    console.log(
+      `[Server] YakShaver Video Backend running on port ${config.port}`,
+    );
     console.log(`[Server] LLM Provider: ${config.llm.provider}`);
+    console.log(`[Server] Mode: Fully agentic (Claude Code-style)`);
     console.log(`[Server] Environment: ${config.nodeEnv}`);
   });
 
-  // Start queue worker
   try {
     await startWorker();
   } catch (error) {
     console.error("[Worker] Failed to start:", error);
-    // Server still runs - worker can be restarted independently
   }
 }
 
 // Graceful shutdown
-process.on("SIGTERM", async () => {
-  console.log("[Server] SIGTERM received, shutting down...");
-  try {
-    const queue = getQueueService();
-    await queue.close();
-  } catch (e) {
-    console.error("[Server] Error during shutdown:", e);
-  }
-  process.exit(0);
-});
-
-process.on("SIGINT", async () => {
-  console.log("[Server] SIGINT received, shutting down...");
-  try {
-    const queue = getQueueService();
-    await queue.close();
-  } catch (e) {
-    console.error("[Server] Error during shutdown:", e);
-  }
-  process.exit(0);
-});
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.on(signal, async () => {
+    console.log(`[Server] ${signal} received, shutting down...`);
+    try {
+      const queue = getQueueService();
+      await queue.close();
+    } catch (e) {
+      console.error("[Server] Error during shutdown:", e);
+    }
+    process.exit(0);
+  });
+}
 
 main().catch((err) => {
   console.error("[Fatal]", err);
