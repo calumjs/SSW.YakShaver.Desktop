@@ -38,11 +38,26 @@ export class VideoProcessor {
     const toolCallRecords: AgentToolCallRecord[] = [];
 
     try {
+      // Layer 3: If a project is specified, check authorization
+      if (job.projectId) {
+        const authorized = await this.config.portalClient.isUserAuthorized(
+          job.submittedBy.userId,
+          job.projectId,
+        );
+        if (!authorized) {
+          jobStore.update(job.id, {
+            status: "failed",
+            error: `User '${job.submittedBy.displayName}' is not authorized for project '${job.projectId}'`,
+          });
+          return;
+        }
+      }
+
       jobStore.update(job.id, {
         status: "processing",
         progress: {
           stage: "initializing",
-          message: "Starting agentic processing...",
+          message: `Starting agentic processing (submitted by ${job.submittedBy.displayName})...`,
         },
       });
 
@@ -54,8 +69,14 @@ export class VideoProcessor {
       });
 
       // Register built-in tools
+      // The portal tools are scoped to the user's accessible projects
       agent.addTool(createTranscribeTool(this.config.storageProvider));
-      agent.addTool(createListProjectsTool(this.config.portalClient));
+      agent.addTool(
+        createListProjectsTool(
+          this.config.portalClient,
+          job.submittedBy.userId,
+        ),
+      );
       agent.addTool(createGetProjectTool(this.config.portalClient));
 
       // Register MCP bridge tools from default servers
@@ -118,22 +139,27 @@ export class VideoProcessor {
         }
       });
 
-      // Build the user message - this is what kicks off the agent
+      // Build user message with attribution context
       const userMessage = buildUserMessage(job);
 
-      // Build system prompt with optional project hint
+      // Build system prompt with user attribution and optional project hint
       const systemPrompt = buildAgentSystemPrompt({
         projectHint: job.projectId,
+        userAttribution: {
+          name: job.submittedBy.displayName,
+          email: job.submittedBy.email,
+        },
       });
 
       // Run the agent
-      console.log(`[VideoProcessor] Starting agent for job ${job.id}`);
+      console.log(
+        `[VideoProcessor] Starting agent for job ${job.id} (user: ${job.submittedBy.displayName})`,
+      );
       const result = await agent.run(systemPrompt, userMessage);
       console.log(
         `[VideoProcessor] Agent completed job ${job.id} in ${result.turnCount} turns, ${result.toolCallCount} tool calls`,
       );
 
-      // Extract transcript from tool call records
       const transcribeRecord = toolCallRecords.find(
         (r) => r.tool === "transcribe_video",
       );
@@ -168,8 +194,9 @@ export class VideoProcessor {
 function buildUserMessage(job: VideoJob): string {
   const parts: string[] = [];
 
+  parts.push(`Process the video stored at key: "${job.videoKey}"`);
   parts.push(
-    `Process the video stored at key: "${job.videoKey}"`,
+    `This video was submitted by ${job.submittedBy.displayName}${job.submittedBy.email ? ` (${job.submittedBy.email})` : ""}.`,
   );
 
   if (job.projectId) {

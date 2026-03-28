@@ -1,12 +1,12 @@
 import type { AgentTool, PortalClient } from "../../../types/index.js";
 
 /**
- * Tool to list all available projects from the portal.
- * The agent uses this to understand what projects exist and
- * match the transcript to the right project.
+ * Tool to list available projects from the portal.
+ * When a userId is provided, only returns projects the user is authorized for.
  */
 export function createListProjectsTool(
   portalClient: PortalClient,
+  userId?: string,
 ): AgentTool {
   return {
     name: "list_projects",
@@ -19,7 +19,7 @@ export function createListProjectsTool(
       properties: {},
     },
     async execute() {
-      const projects = await portalClient.getProjects();
+      const projects = await portalClient.getProjects(userId);
 
       if (projects.length === 0) {
         return "No projects found in the portal.";

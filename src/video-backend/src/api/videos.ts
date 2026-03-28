@@ -4,16 +4,21 @@ import os from "node:os";
 import path from "node:path";
 import { v4 as uuid } from "uuid";
 import { config } from "../config/index.js";
+import { authMiddleware } from "../middleware/auth.js";
 import { jobStore } from "../services/pipeline/job-store.js";
-import { getStorageProvider } from "../services/storage/s3-storage.js";
 import { getQueueService } from "../services/queue/service-bus-queue.js";
+import { getStorageProvider } from "../services/storage/s3-storage.js";
 import type { VideoJob } from "../types/index.js";
 
 const upload = multer({
   dest: os.tmpdir(),
   limits: { fileSize: config.upload.maxFileSizeMb * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if ((config.upload.allowedMimeTypes as readonly string[]).includes(file.mimetype)) {
+    if (
+      (config.upload.allowedMimeTypes as readonly string[]).includes(
+        file.mimetype,
+      )
+    ) {
       cb(null, true);
     } else {
       cb(new Error(`Unsupported file type: ${file.mimetype}`));
@@ -23,10 +28,13 @@ const upload = multer({
 
 export const videosRouter = Router();
 
+// All video routes require authentication
+videosRouter.use(authMiddleware);
+
 /**
  * POST /api/videos/upload
  * Upload a video file for processing.
- * Optional query param: projectId (to specify which project to use)
+ * Auth: Required (user identity flows to agent for attribution)
  */
 videosRouter.post("/upload", upload.single("video"), async (req, res) => {
   try {
@@ -35,6 +43,7 @@ videosRouter.post("/upload", upload.single("video"), async (req, res) => {
       return;
     }
 
+    const user = req.user!;
     const jobId = uuid();
     const ext = path.extname(req.file.originalname) || ".mp4";
     const videoKey = `uploads/${jobId}${ext}`;
@@ -44,10 +53,11 @@ videosRouter.post("/upload", upload.single("video"), async (req, res) => {
     const storage = getStorageProvider();
     await storage.upload(videoKey, req.file.path, req.file.mimetype);
 
-    // Create job
+    // Create job with user identity
     const job: VideoJob = {
       id: jobId,
       status: "queued",
+      submittedBy: user,
       projectId,
       videoKey,
       createdAt: new Date(),
@@ -63,6 +73,7 @@ videosRouter.post("/upload", upload.single("video"), async (req, res) => {
     res.status(202).json({
       jobId: job.id,
       status: job.status,
+      submittedBy: user.displayName,
       message: "Video uploaded and queued for processing",
     });
   } catch (error) {
@@ -75,10 +86,10 @@ videosRouter.post("/upload", upload.single("video"), async (req, res) => {
 /**
  * POST /api/videos/upload-url
  * Get a presigned URL for direct-to-S3 upload (for large files).
- * Body: { fileName, contentType, projectId? }
  */
 videosRouter.post("/upload-url", async (req, res) => {
   try {
+    const user = req.user!;
     const { fileName, contentType, projectId } = req.body;
 
     if (!fileName || !contentType) {
@@ -88,7 +99,11 @@ videosRouter.post("/upload-url", async (req, res) => {
       return;
     }
 
-    if (!(config.upload.allowedMimeTypes as readonly string[]).includes(contentType)) {
+    if (
+      !(config.upload.allowedMimeTypes as readonly string[]).includes(
+        contentType,
+      )
+    ) {
       res.status(400).json({ error: `Unsupported file type: ${contentType}` });
       return;
     }
@@ -103,10 +118,10 @@ videosRouter.post("/upload-url", async (req, res) => {
       contentType,
     );
 
-    // Create job in pending state (will be activated when upload is confirmed)
     const job: VideoJob = {
       id: jobId,
       status: "uploading",
+      submittedBy: user,
       projectId,
       videoKey,
       createdAt: new Date(),
@@ -115,11 +130,7 @@ videosRouter.post("/upload-url", async (req, res) => {
 
     jobStore.set(job);
 
-    res.json({
-      jobId,
-      uploadUrl,
-      videoKey,
-    });
+    res.json({ jobId, uploadUrl, videoKey });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[API] Upload URL error:", message);
@@ -129,7 +140,7 @@ videosRouter.post("/upload-url", async (req, res) => {
 
 /**
  * POST /api/videos/:jobId/process
- * Confirm upload is complete and start processing (for presigned URL flow).
+ * Confirm upload is complete and start processing.
  */
 videosRouter.post("/:jobId/process", async (req, res) => {
   try {
@@ -141,9 +152,9 @@ videosRouter.post("/:jobId/process", async (req, res) => {
     }
 
     if (job.status !== "uploading") {
-      res
-        .status(400)
-        .json({ error: `Job is in '${job.status}' state, expected 'uploading'` });
+      res.status(400).json({
+        error: `Job is in '${job.status}' state, expected 'uploading'`,
+      });
       return;
     }
 
@@ -165,7 +176,6 @@ videosRouter.post("/:jobId/process", async (req, res) => {
 
 /**
  * GET /api/videos/jobs/:jobId
- * Get the status and result of a processing job.
  */
 videosRouter.get("/jobs/:jobId", (req, res) => {
   const job = jobStore.get(req.params.jobId);
@@ -178,6 +188,7 @@ videosRouter.get("/jobs/:jobId", (req, res) => {
   res.json({
     id: job.id,
     status: job.status,
+    submittedBy: job.submittedBy.displayName,
     projectId: job.projectId,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
@@ -189,12 +200,12 @@ videosRouter.get("/jobs/:jobId", (req, res) => {
 
 /**
  * GET /api/videos/jobs
- * List all jobs.
  */
 videosRouter.get("/jobs", (_req, res) => {
   const jobs = jobStore.list().map((j) => ({
     id: j.id,
     status: j.status,
+    submittedBy: j.submittedBy.displayName,
     projectId: j.projectId,
     createdAt: j.createdAt,
     updatedAt: j.updatedAt,

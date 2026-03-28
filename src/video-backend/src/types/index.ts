@@ -1,8 +1,28 @@
+// ---- Auth types ----
+
+/**
+ * Represents the authenticated identity making a request.
+ * This is Layer 1 auth - "who is this person?"
+ * NOT their permissions to external services (that's the MCP server's job).
+ */
+export interface UserIdentity {
+  /** Unique user identifier (from SSO, API key lookup, JWT sub, etc.) */
+  userId: string;
+  /** Display name for attribution in created artifacts */
+  displayName: string;
+  /** Email for attribution */
+  email?: string;
+  /** Which auth method was used */
+  authMethod: "api-key" | "jwt" | "sso";
+}
+
 // ---- Job types ----
 
 export interface VideoJob {
   id: string;
   status: JobStatus;
+  /** Who submitted this job */
+  submittedBy: UserIdentity;
   projectId?: string;
   videoKey: string;
   createdAt: Date;
@@ -161,8 +181,12 @@ export interface StorageProvider {
 }
 
 export interface PortalClient {
-  getProjects(): Promise<PortalProject[]>;
+  /** Get all projects (optionally filtered to what a user can access) */
+  getProjects(userId?: string): Promise<PortalProject[]>;
+  /** Get a single project */
   getProject(id: string): Promise<PortalProject | null>;
+  /** Check if a user is authorized to use a specific project */
+  isUserAuthorized(userId: string, projectId: string): Promise<boolean>;
 }
 
 export interface QueueService {

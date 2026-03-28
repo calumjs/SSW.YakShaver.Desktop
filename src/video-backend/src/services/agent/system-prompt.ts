@@ -1,6 +1,7 @@
 export function buildAgentSystemPrompt(options?: {
   projectHint?: string;
   customInstructions?: string;
+  userAttribution?: { name: string; email?: string };
 }): string {
   const parts: string[] = [];
 
@@ -96,6 +97,11 @@ For failures:
 \`\`\`
 
 IMPORTANT: Your final response must be ONLY the JSON object. No text before or after.`);
+
+  if (options?.userAttribution) {
+    const user = options.userAttribution;
+    parts.push(`\n## User Attribution\n\nThis video was submitted by **${user.name}**${user.email ? ` (${user.email})` : ""}. When creating issues, PBIs, emails, or other artifacts, attribute them to this person. For example, include "Reported by ${user.name} via YakShaver" in issue bodies.`);
+  }
 
   if (options?.projectHint) {
     parts.push(`\n## Project Hint\n\nThe user has indicated this video relates to project: "${options.projectHint}". Use this as a starting point but verify with the portal tools.`);
